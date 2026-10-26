@@ -56,4 +56,21 @@ curl localhost:8000/api/activities            # riwayat yang ditulis trigger
 
 ## Yang belum teruji
 Kode ini baru diperiksa sintaks PHP-nya (`php -l`). Server MySQL dan Composer/Packagist tidak bisa dipakai di lingkungan tempat file ini dibuat, jadi migration, trigger, dan endpoint **belum pernah dijalankan**. Jalankan `php artisan migrate` dan contoh `curl` di atas; bila ada error SQL, kirim pesannya untuk diperbaiki.
-Bagian lain yang belum ada: autentikasi/login, dan tampilan web (aplikasi HTML lama belum disambungkan ke API ini).
+Tampilan web sudah tersambung ke API ini, dan login sudah ada (lihat di bawah).
+
+## Login (wajib masuk dulu)
+Semua halaman dan `/api/*` hanya bisa dibuka setelah login (sesi + cookie, token CSRF otomatis). Tidak ada pendaftaran terbuka, jadi orang asing tidak bisa membuat akun sendiri.
+- Login bawaan: **admin@catatin.local / catatin123**, dibuat otomatis oleh `php artisan migrate` bila tabel `users` masih kosong. **Segera ganti.**
+- Tambah user / ganti password: `php artisan catatin:user budi@toko.com --name=Budi --password=rahasia123` (tanpa `--password`, password ditanyakan).
+- Tombol keluar ada di pojok kanan atas aplikasi (ikon ⎋). Percobaan password salah dibatasi 5x per menit.
+- Data (folder, barang, memo, tabel) dipakai bersama oleh semua user yang bisa login; belum dipisah per user.
+
+## Memperbarui database TANPA impor ulang
+Cukup `php artisan migrate`: menambah kolom `client_key` dan membuat user bawaan, data lama tetap aman. Bila hosting tidak punya terminal, impor `db_update_login.sql` (phpMyAdmin) ke database yang sudah ada. `db_catatin.sql` hanya untuk database KOSONG (sudah berisi kolom baru + user bawaan).
+Habis deploy file baru, jalankan `php artisan optimize:clear` supaya rute dan konfigurasi lama tidak tertinggal.
+
+## Anti data dobel
+Setiap data baru (folder, barang, memo, tabel) dikirim browser bersama kode unik `client_key` (kolom UNIQUE). Bila permintaan yang sama masuk dua kali (klik dobel, koneksi lambat, percobaan ulang otomatis), server memakai data yang sudah ada dan tidak membuat yang kedua.
+
+## Indikator offline / sinkronisasi
+Indikator di topbar kini menunjukkan status nyata: Offline, Menyimpan…, Belum tersinkron, Tersimpan. Di HP muncul spanduk di atas layar (offline, menyinkronkan, berhasil, atau gagal + tombol "Coba lagi"). Saat internet kembali, simpan otomatis (memo, folder, barang) dan tabel yang tertunda dikirim sungguhan, dan dicoba ulang tiap 15 detik bila masih gagal. Batasan: perubahan offline hanya bertahan selama halaman tetap terbuka (belum ada antrean permanen di perangkat).

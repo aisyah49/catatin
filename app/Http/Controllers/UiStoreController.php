@@ -7,6 +7,7 @@ use App\Models\Memo;
 use App\Models\Product;
 use App\Models\Sheet;
 use App\Support\DbGuard;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -115,22 +116,44 @@ class UiStoreController extends Controller
         return response()->json((self::MODELS[$entity])::findOrFail($id));
     }
 
-    /** Simpan. Tanpa $id = buat baru (POST); dengan $id = ubah atau pulihkan dengan id yang sama (PUT). */
+    /**
+     * Simpan. Tanpa $id = buat baru (POST); dengan $id = ubah atau pulihkan dengan id yang sama (PUT).
+     *
+     * ANTI DOBEL: tiap data BARU dikirim browser bersama `client_key` (kode unik). Bila kode itu sudah pernah masuk
+     * (klik dobel, koneksi lambat lalu dicoba ulang, browser mengirim ulang POST), server mengembalikan data yang
+     * sudah ada dan TIDAK membuat data kedua. Kolom client_key bersifat UNIQUE, jadi dua permintaan yang tiba
+     * bersamaan pun tetap hanya menghasilkan satu baris.
+     */
     public function save(Request $r, string $entity, ?int $id = null): JsonResponse
     {
         $data = json_decode((string) $r->input('payload'), true);
         if (!is_array($data)) {
             return response()->json(['message' => 'Data tidak valid'], 422);
         }
-        $data = Validator::make($data, $this->rules($entity))->validate();
+        $data = Validator::make($data, $this->rules($entity) + ['client_key' => 'nullable|string|max:64'])->validate();
         if ($entity === 'memos') {
             $data['title'] = $data['title'] ?? '';   // kolom title tidak boleh NULL
         }
 
-        $model = DbGuard::tx(function () use ($entity, $id, $data) {
-            $class = self::MODELS[$entity];
-            return $id ? $class::updateOrCreate(['id' => $id], $data) : $class::create($data);
-        });
+        $class = self::MODELS[$entity];
+        $key = $id ? null : ($data['client_key'] ?? null);
+        if ($id) {
+            unset($data['client_key']);              // kode hanya dipakai saat membuat data baru
+        }
+
+        if ($key && ($existing = $class::where('client_key', $key)->first())) {
+            return response()->json($existing, 200);   // sudah pernah tersimpan: jangan buat lagi
+        }
+
+        try {
+            $model = DbGuard::tx(fn () => $id ? $class::updateOrCreate(['id' => $id], $data) : $class::create($data));
+        } catch (QueryException $e) {
+            // 1062 = duplicate entry: permintaan kembar tiba bersamaan, yang satunya sudah menang.
+            if ($key && ($e->errorInfo[1] ?? null) == 1062 && ($found = $class::where('client_key', $key)->first())) {
+                return response()->json($found, 200);
+            }
+            throw $e;
+        }
         return response()->json($model->fresh(), $id ? 200 : 201);
     }
 
