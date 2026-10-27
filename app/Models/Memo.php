@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 /** Memo bergaya dokumen: `blocks` berisi daftar blok teks/tabel/checklist/foto. */
 class Memo extends Model
 {
+    use \App\Models\Concerns\BelongsToUser;
+
     protected $guarded = [];
     protected $casts = ['date' => 'date:Y-m-d', 'blocks' => 'array', 'from_sheet' => 'array'];
 }

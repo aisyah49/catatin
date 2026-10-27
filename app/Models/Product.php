@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** Barang di dalam folder. Validasi & pencatatan riwayat dikerjakan TRIGGER di database. */
 class Product extends Model
 {
+    use \App\Models\Concerns\BelongsToUser;
+
     protected $guarded = [];
     protected $casts = ['date' => 'date:Y-m-d'];
 

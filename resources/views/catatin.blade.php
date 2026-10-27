@@ -73,6 +73,15 @@ html{scroll-padding-top:env(safe-area-inset-top,0px);}
 .dot.green{background:var(--green);}
 .dot.yellow{background:var(--yellow);}
 .dot.red{background:var(--danger);}
+.dot.pulse{animation:nbpulse 1s ease-in-out infinite;}
+@keyframes nbpulse{50%{opacity:.25;}}
+/* Spanduk status jaringan/sinkronisasi (terutama untuk HP, tempat teks indikator di topbar disembunyikan) */
+.netbar{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 8px);transform:translate(-50%,-160%);z-index:9999;max-width:min(94vw,520px);display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;font-size:.85rem;font-weight:600;line-height:1.3;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.28);transition:transform .25s ease;pointer-events:none;}
+.netbar.show{transform:translate(-50%,0);pointer-events:auto;}
+.netbar.off{background:#B91C1C;} .netbar.sync{background:#1D4ED8;} .netbar.ok{background:#15803D;} .netbar.err{background:#B45309;}
+.netbar button{border:1px solid rgba(255,255,255,.7);background:transparent;color:#fff;border-radius:8px;padding:5px 10px;font-weight:700;font-size:.8rem;cursor:pointer;white-space:nowrap;}
+.netbar .spin{flex:none;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:nbspin .8s linear infinite;}
+@keyframes nbspin{to{transform:rotate(360deg);}}
 
 .content{padding:22px;max-width:980px;min-width:0;}
 @media(min-width:1500px){.content{margin:0 auto;max-width:1180px;padding:28px 36px;}.memo-footer .mf-in{max-width:1108px;margin:0 auto;}}
@@ -500,6 +509,7 @@ button,.tb,.folder-item,[role=button]{-webkit-tap-highlight-color:transparent;to
       <div class="search-box"><span class="ic">🔍</span><input id="globalSearch" placeholder="Cari barang atau folder..."></div>
       <div class="storage-ind" id="storageInd"></div>
       <button class="theme-btn" id="themeBtn" title="Ganti tema">🎨</button>
+      <button class="theme-btn" id="logoutBtn" title="Keluar">⎋</button>
     </div>
     <div class="content" id="content"></div>
   </div>
@@ -514,6 +524,10 @@ button,.tb,.folder-item,[role=button]{-webkit-tap-highlight-color:transparent;to
    Aplikasi tetap memanggil all / get / put / del seperti dulu; keempatnya kini berbicara ke server.
    Data di database memakai snake_case (box_qty), aplikasi memakai camelCase (boxQty): diterjemahkan di sini. */
 const API = '/api';
+document.addEventListener('click', e => {      // tombol Keluar: kirim POST /logout (dengan token CSRF), lalu ke halaman login
+  if(!e.target.closest || !e.target.closest('#logoutBtn')) return;
+  fetch('/logout', {method:'POST', credentials:'same-origin', headers:{'X-XSRF-TOKEN': xsrf(), 'Accept':'text/html'}}).finally(() => { location.href = '/login'; });
+});
 const objOf = v => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};   // PHP mengubah {} kosong menjadi []
 const tms = (iso, id) => iso ? Date.parse(String(iso).replace(/\.\d+Z$/, 'Z')) + (id || 0) : 0;   // + id: urutan stabil saat waktunya sama
 const toIso = ms => ms ? new Date(ms).toISOString() : null;
@@ -549,8 +563,22 @@ const MAP = {
     from: r => ({id:r.id, type:r.type, entity:r.entity, entityName:r.entity_name, snapshot:r.snapshot || (r.has_snapshot ? {} : null), undone:!!r.undone, ts:tms(r.created_at, r.id)}),
   },
 };
+// Login memakai sesi (cookie). Laravel menaruh token CSRF di cookie XSRF-TOKEN; setiap permintaan menyertakannya di header.
+const xsrf = () => { const m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/); return m ? decodeURIComponent(m[1]) : ''; };
+const authHeaders = () => ({'Accept':'application/json', 'Content-Type':'application/json', 'X-XSRF-TOKEN': xsrf(), 'X-Requested-With':'XMLHttpRequest'});
+// Kode unik untuk data BARU: bila permintaan simpan terkirim dua kali, server mengenali kodenya dan tidak membuat data kedua.
+const newKey = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('k' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+let loggingOut = false;
+function toLogin(){ if(loggingOut) return; loggingOut = true; location.href = '/login'; }
 async function api(path, opt = {}){
-  const res = await fetch(API + '/' + path, {headers:{'Accept':'application/json', 'Content-Type':'application/json'}, ...opt});
+  const isWrite = String(opt.method || 'GET').toUpperCase() !== 'GET';
+  if(isWrite){ inflight++; renderStorageInd(); }
+  try{ return await apiRaw(path, opt); }
+  finally{ if(isWrite){ inflight--; renderStorageInd(); } }
+}
+async function apiRaw(path, opt = {}){
+  const res = await fetch(API + '/' + path, {credentials:'same-origin', ...opt, headers:{...authHeaders(), ...(opt.headers || {})}});
+  if(res.status === 401 || res.status === 419){ toast('Sesi berakhir, silakan masuk lagi…', 3000); setTimeout(toLogin, 600); const e = new Error('Sesi berakhir'); e.status = res.status; throw e; }
   if(!res.ok){
     let msg = 'Server error (' + res.status + ')';
     try{ const j = await res.json(); if(j.message) msg = j.message; }catch(e){}
@@ -558,7 +586,15 @@ async function api(path, opt = {}){
     if(res.status === 422) toast(msg, 4500);       // pesan dari validasi / trigger database
     throw err;
   }
-  return res.json();
+  // Baca sebagai teks dulu: bila server menyelipkan peringatan PHP di depan JSON, ambil bagian JSON-nya saja
+  // (dulu ini membuat simpan dianggap GAGAL padahal sudah masuk, lalu dicoba lagi sehingga data dobel).
+  const txt = await res.text();
+  try{ return JSON.parse(txt); }
+  catch(e){
+    const i = txt.search(/[\[{]/);
+    if(i > 0){ try{ return JSON.parse(txt.slice(i)); }catch(e2){} }
+    throw new Error('Respons server tidak valid');
+  }
 }
 // Cache bacaan 20 detik: berpindah halaman tidak lagi mengambil ulang semua data dari server.
 // Setiap simpan/hapus langsung membuang cache yang terkait, jadi data selalu segar setelah ada perubahan.
@@ -633,7 +669,7 @@ function shFlush(){
 }
 // Jangan kehilangan ketikan terakhir saat tab ditutup / pindah
 addEventListener('pagehide', () => {
-  for(const id of shDirty){ const o = shLocal.get(id); if(o) try{ fetch(API + '/db/sheets/' + id, {method:'PUT', keepalive:true, headers:{'Content-Type':'application/json','Accept':'application/json'}, body:JSON.stringify({payload:JSON.stringify(MAP.sheets.to(o))})}); }catch(e){} }
+  for(const id of shDirty){ const o = shLocal.get(id); if(o) try{ fetch(API + '/db/sheets/' + id, {method:'PUT', keepalive:true, credentials:'same-origin', headers:authHeaders(), body:JSON.stringify({payload:JSON.stringify(MAP.sheets.to(o))})}); }catch(e){} }
 });
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden' && shDirty.size) shFlush(); });
 
@@ -649,7 +685,9 @@ const imgSig = o => Object.keys(o.imgs || {}).sort().join(',');     // foto tida
 const shSent = new Map();                                            // id tabel -> daftar foto yang sudah ada di server
 async function serverPut(store, obj){
   const withImgs = store !== 'sheets' || shSent.get(obj.id) !== imgSig(obj);
-  const m = MAP[store], body = JSON.stringify({payload: JSON.stringify(m.to(obj, withImgs))});
+  const m = MAP[store], data = m.to(obj, withImgs);
+  if(obj.id == null && obj.clientKey) data.client_key = obj.clientKey;     // anti dobel (lihat UiStoreController::save)
+  const body = JSON.stringify({payload: JSON.stringify(data)});
   const saved = obj.id != null ? await api(m.path + '/' + obj.id, {method:'PUT', body}) : await api(m.path, {method:'POST', body});
   if(store === 'sheets') shSent.set(saved.id, imgSig(obj));
   return saved.id;
@@ -825,16 +863,55 @@ function attachAutoCapitalize(el){
   });
 }
 
-/* ---------------- storage indicator (sync simulation) ---------------- */
-let pendingSync = false;
+/* ---------------- Indikator simpan & sinkronisasi (status nyata, bukan simulasi) ----------------
+   Status: Offline (merah) -> Menyimpan… (kuning berkedip) -> Belum tersinkron (kuning) -> Tersimpan (hijau).
+   Di HP teks indikator disembunyikan, jadi ada spanduk di atas layar: offline, menyinkronkan, berhasil, atau gagal + tombol Coba lagi.
+   Begitu internet kembali, perubahan yang tertunda DIKIRIM sungguhan (tabel, memo, folder, barang), lalu hasilnya diberitahukan. */
+let pendingSync = false, inflight = 0, syncing = false, barTimer = null;
+const syncPending = () => pendingSync || shDirty.size > 0 || [...autosavers].some(a => a.failed);
 function renderStorageInd(){
-  const el = document.getElementById('storageInd');
-  if(!navigator.onLine){ el.innerHTML = '<span class="dot red"></span><span class="txt">Offline</span>'; return; }
-  if(pendingSync){ el.innerHTML = '<span class="dot yellow"></span><span class="txt">Belum disinkronkan</span>'; return; }
-  el.innerHTML = '<span class="dot green"></span><span class="txt">Tersimpan</span>';
+  const el = document.getElementById('storageInd'); if(!el) return;
+  let dot, txt;
+  if(!navigator.onLine){ dot = 'red'; txt = syncPending() ? 'Offline · menunggu kirim' : 'Offline'; }
+  else if(inflight > 0 || syncing){ dot = 'yellow pulse'; txt = 'Menyimpan…'; }
+  else if(syncPending()){ dot = 'yellow'; txt = 'Belum tersinkron'; }
+  else { dot = 'green'; txt = 'Tersimpan'; }
+  el.title = txt; el.setAttribute('aria-label', txt);
+  el.innerHTML = '<span class="dot ' + dot + '"></span><span class="txt">' + txt + '</span>';
 }
-window.addEventListener('online', ()=>{ if(pendingSync){ setTimeout(()=>{ pendingSync=false; renderStorageInd(); toast('Data tersinkron ke server'); }, 900); } renderStorageInd(); });
-window.addEventListener('offline', renderStorageInd);
+function netBar(kind, msg, retry){
+  let b = document.getElementById('netBar');
+  if(!b){ b = document.createElement('div'); b.id = 'netBar'; b.className = 'netbar'; b.setAttribute('role', 'status'); b.setAttribute('aria-live', 'polite'); document.body.appendChild(b); }
+  clearTimeout(barTimer);
+  if(!kind){ b.classList.remove('show'); return; }
+  b.className = 'netbar show ' + kind;
+  b.innerHTML = (kind === 'sync' ? '<span class="spin"></span>' : '') + '<span>' + msg + '</span>' + (retry ? '<button type="button" id="netRetry">Coba lagi</button>' : '');
+  if(retry) b.querySelector('#netRetry').onclick = () => syncNow();
+  if(kind === 'ok') barTimer = setTimeout(() => netBar(null), 2800);
+}
+async function syncNow(){
+  if(syncing || !navigator.onLine) return;
+  syncing = true; netBar('sync', 'Menyinkronkan perubahan…'); renderStorageInd();
+  try{
+    flushAllAutosave();                                          // kirim ulang simpan otomatis yang tertunda/gagal
+    await Promise.all([...autosavers].map(a => a.flush()));
+    await shFlush();                                             // tabel yang belum terkirim
+  }catch(e){}
+  syncing = false;
+  if(navigator.onLine && !syncPending()){
+    pendingSync = false; bust('folders', 'products', 'memos', 'sheets', 'activity');   // data berikutnya diambil segar dari server
+    netBar('ok', '✓ Semua perubahan sudah tersinkron'); toast('Data tersinkron ke server');
+  } else if(navigator.onLine){ netBar('err', '⚠ Sebagian perubahan belum terkirim', true); }
+  renderStorageInd();
+}
+window.addEventListener('offline', () => {
+  netBar('off', '📴 Kamu sedang offline. Tulisan tetap aman di layar ini dan dikirim otomatis saat online. Jangan tutup halaman ini dulu.');
+  renderStorageInd();
+});
+window.addEventListener('online', () => { renderStorageInd(); if(syncPending()) syncNow(); else netBar(null); });
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && navigator.onLine && syncPending()) syncNow(); });
+setInterval(() => { if(navigator.onLine && syncPending() && !syncing && inflight === 0) syncNow(); }, 15000);   // coba lagi sendiri bila ada yang tertunda
+window.addEventListener('DOMContentLoaded', () => { if(!navigator.onLine) window.dispatchEvent(new Event('offline')); });
 function markWrite(){ if(!navigator.onLine) pendingSync = true; renderStorageInd(); }
 
 /* ---------------- state & routing ---------------- */
@@ -1541,7 +1618,7 @@ function wireBlockInteractions(){
 // Hanya menulis bila isinya benar-benar berbeda dari yang tersimpan terakhir.
 const autosavers = new Set();
 function makeAutosave({store, id = null, original = null, build, delay = 1000, onState}){
-  let timer = null, q = Promise.resolve(), lastKey = null, saved = false, closed = false, failed = false, since = 0;
+  let timer = null, q = Promise.resolve(), lastKey = null, saved = false, closed = false, failed = false, since = 0, ck = null;
   const keyOf = o => JSON.stringify(o, (k, v) => (k === 'updatedAt' || k === 'id' || k === 'src') ? undefined : v);
   const api = {
     get id(){ return id; }, get active(){ return !closed; }, get failed(){ return failed; }, get changed(){ return saved; },
@@ -1567,9 +1644,10 @@ function makeAutosave({store, id = null, original = null, build, delay = 1000, o
       q = q.then(async()=>{
         try{
           if(id !== null) obj.id = id;
+          else { ck = ck || newKey(); obj.clientKey = ck; }       // kode yang sama dipakai di setiap percobaan ulang -> tidak jadi dobel
           id = await put(store, obj); saved = true; failed = false; markWrite();
           if(onState) onState('saved');
-        }catch(e){ failed = true; lastKey = null; if(onState) onState('error'); }
+        }catch(e){ failed = true; lastKey = null; if(onState) onState('error'); renderStorageInd(); }
       });
       return q;
     },
@@ -2339,12 +2417,17 @@ function openSheetModal(){
   document.body.insertAdjacentHTML('beforeend', html);
   attachAutoCapitalize(document.getElementById('sh_name'));
   document.getElementById('shAnc').onclick = ()=>document.getElementById('ovSheet').remove();
+  const shKey = newKey(); let shBusy = false;
   document.getElementById('shOk').onclick = async ()=>{
+    if(shBusy) return;                                   // klik/tap kedua saat server masih menyimpan diabaikan
     const name = document.getElementById('sh_name').value.trim();
     if(!name){ toast('Nama tabel wajib diisi'); return; }
-    const id = await put('sheets', {name, rows:8, cols:6, cells:{}, createdAt:Date.now()});
-    markWrite(); toast('Tabel dibuat'); document.getElementById('ovSheet').remove();
-    activeSheetId = id; view='sheet'; render();
+    const btn = document.getElementById('shOk'); shBusy = true; btn.disabled = true; btn.textContent = 'Membuat…';
+    try{
+      const id = await put('sheets', {name, rows:8, cols:6, cells:{}, createdAt:Date.now(), clientKey:shKey});
+      markWrite(); toast('Tabel dibuat'); document.getElementById('ovSheet').remove();
+      activeSheetId = id; view='sheet'; render();
+    }catch(e){ shBusy = false; btn.disabled = false; btn.textContent = 'Buat Tabel'; toast('Gagal membuat tabel, coba lagi'); }
   };
 }
 /* ---- Format sel Tabel (B / I / U) + pemilihan sel ---- */

@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Activity extends Model
 {
+    use \App\Models\Concerns\BelongsToUser;
+
     public $timestamps = false;
     protected $guarded = [];
     protected $casts = ['snapshot' => 'array', 'undone' => 'boolean', 'created_at' => 'datetime'];
