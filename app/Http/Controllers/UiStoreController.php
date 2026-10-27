@@ -143,11 +143,14 @@ class UiStoreController extends Controller
             unset($data['client_key']);              // kode hanya dipakai saat membuat data baru
         }
 
+<<<<<<< HEAD
         // Id milik akun lain: tolak (jangan menimpa / membuat data dengan id itu).
         if ($id && !$class::whereKey($id)->exists() && $class::withoutGlobalScopes()->whereKey($id)->exists()) {
             abort(404);
         }
 
+=======
+>>>>>>> 85f42d1908541fe39e4ca44d548d884aa2e9774c
         if ($key && ($existing = $class::where('client_key', $key)->first())) {
             return response()->json($existing, 200);   // sudah pernah tersimpan: jangan buat lagi
         }

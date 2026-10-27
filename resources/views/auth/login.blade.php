@@ -22,7 +22,10 @@ input:focus{outline:2px solid var(--blue);outline-offset:1px;}
 .remember{display:flex;align-items:center;gap:8px;margin:14px 0 4px;font-size:.88rem;color:var(--muted);}
 .btn{width:100%;margin-top:18px;padding:12px;border:0;border-radius:10px;background:var(--blue);color:#fff;font-size:1rem;font-weight:700;cursor:pointer;}
 .btn:disabled{opacity:.6;cursor:wait;}
+<<<<<<< HEAD
 .alt{margin:16px 0 0;text-align:center;font-size:.88rem;color:var(--muted);}.alt a{color:var(--blue);font-weight:600;text-decoration:none;}
+=======
+>>>>>>> 85f42d1908541fe39e4ca44d548d884aa2e9774c
 .err{margin-bottom:6px;padding:10px 12px;border-radius:10px;background:rgba(220,38,38,.1);color:var(--danger);font-size:.88rem;}
 </style>
 </head>
@@ -49,7 +52,10 @@ input:focus{outline:2px solid var(--blue);outline-offset:1px;}
   <label class="remember"><input type="checkbox" name="remember" value="1" checked> Ingat saya di perangkat ini</label>
 
   <button class="btn" id="go" type="submit">Masuk</button>
+<<<<<<< HEAD
   <p class="alt">Belum punya akun? <a href="/register">Daftar</a></p>
+=======
+>>>>>>> 85f42d1908541fe39e4ca44d548d884aa2e9774c
 </form>
 <script>
 document.getElementById('tg').onclick = function(){ var p = document.getElementById('password'), s = p.type === 'password'; p.type = s ? 'text' : 'password'; this.textContent = s ? 'Sembunyi' : 'Lihat'; };

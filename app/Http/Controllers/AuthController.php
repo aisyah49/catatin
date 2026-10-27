@@ -6,11 +6,18 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
+<<<<<<< HEAD
 use App\Models\User;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /** Login / daftar / logout dengan sesi (cookie). Akun baru otomatis kosong: data tiap akun terpisah (user_id). */
+=======
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+
+/** Login / logout dengan sesi (cookie). Tidak ada pendaftaran terbuka: user dibuat lewat `php artisan catatin:user`. */
+>>>>>>> 85f42d1908541fe39e4ca44d548d884aa2e9774c
 class AuthController extends Controller
 {
     public function showLogin()
@@ -42,6 +49,7 @@ class AuthController extends Controller
         return redirect()->intended('/');
     }
 
+<<<<<<< HEAD
     public function showRegister()
     {
         return view('auth.register');
@@ -65,6 +73,8 @@ class AuthController extends Controller
         return redirect('/');                        // akun baru: belum ada folder/memo/tabel
     }
 
+=======
+>>>>>>> 85f42d1908541fe39e4ca44d548d884aa2e9774c
     public function logout(Request $request): RedirectResponse
     {
         Auth::logout();

@@ -74,9 +74,12 @@ Setiap data baru (folder, barang, memo, tabel) dikirim browser bersama kode unik
 
 ## Indikator offline / sinkronisasi
 Indikator di topbar kini menunjukkan status nyata: Offline, Menyimpan…, Belum tersinkron, Tersimpan. Di HP muncul spanduk di atas layar (offline, menyinkronkan, berhasil, atau gagal + tombol "Coba lagi"). Saat internet kembali, simpan otomatis (memo, folder, barang) dan tabel yang tertunda dikirim sungguhan, dan dicoba ulang tiap 15 detik bila masih gagal. Batasan: perubahan offline hanya bertahan selama halaman tetap terbuka (belum ada antrean permanen di perangkat).
+<<<<<<< HEAD
 
 
 ## Akun & data per akun
 - Halaman `/login` dan `/register`. Akun baru otomatis **kosong** (belum ada folder, barang, memo, tabel, riwayat); data tiap akun terpisah lewat kolom `user_id`.
 - Akun bawaan: `user@gmail.com` / `usercatatin` (dibuat migration `2026_10_26_000002_add_user_id_per_account`; data lama yang sudah ada menjadi milik akun ini).
 - Cara pasang: `php artisan migrate` (database lama aman), atau `php artisan migrate:fresh --seed --seeder=CatatinSeeder` untuk database baru + data contoh di akun `user@gmail.com`.
+=======
+>>>>>>> 85f42d1908541fe39e4ca44d548d884aa2e9774c
